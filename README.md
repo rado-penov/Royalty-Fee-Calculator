@@ -33,6 +33,27 @@ Pret franchisees and stores the result in the custom record
 | Franchise Amount | Revenue x Contract Rate / 100 |
 | Marketing Amount | Revenue x Marketing Rate / 100 |
 
+### Single-invoice customers
+
+When **Single Invoice** (`custentity_pret_single_invoice`) is ticked on the
+customer, the customer itself gets no RFC record. Instead:
+
+- One RFC record is created per customer address that has a **Shop ID**
+  (`custrecord_pret_shop_id`), with the same Franchisee and Name as above, and:
+
+| RFC field | Value |
+|-----------|-------|
+| Revenue | `custrecord_pret_revenue_monthly` on the address |
+| Contract Rate (%) | `custrecord_pret_contract_rate_percent_ad` on the address |
+| Marketing Rate (%) | `custrecord_pret_contract_mar_fee_ad` on the address |
+| Shop Number (`custrecord_pret_shop_number_department`) | `custrecord_pret_shop_id` on the address |
+
+- The monthly revenue of all the customer's addresses is summed and written to
+  `custentity_pret_revenue_for_rfc_monthly` on the customer.
+- Addresses without a Shop ID get no RFC record (a warning is logged if they
+  carry revenue); their revenue is still included in the customer total.
+- Re-runs skip shops that already have a record for the date.
+
 Amounts are rounded to 2 decimals. If the script runs low on governance
 units it reschedules itself and continues where it left off.
 
