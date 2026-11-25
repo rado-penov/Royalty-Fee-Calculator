@@ -8,7 +8,8 @@ Pret franchisees and stores the result in the custom record
 
 | Path | Purpose |
 |------|---------|
-| `src/pret_rfc_calculate_fees_ss.js` | SuiteScript 2.1 Scheduled Script |
+| `src/pret_rfc_calculate_fees_ss.js` | SuiteScript 2.1 Scheduled Script - creates RFC records |
+| `src/pret_rfc_invoice_create_ss.js` | SuiteScript 2.1 Scheduled Script - creates invoices from RFC records |
 | `Docs/Fields.xlsx` | Custom field IDs on Customer and the RFC custom record |
 
 ## What the script does
@@ -87,3 +88,33 @@ units it reschedules itself and continues where it left off.
   missing. Other columns and filters can be changed freely.
 - The *Today is* parameter only controls the date stamped on the RFC record.
   It does not change which customers the saved search returns.
+
+## Invoice script (`pret_rfc_invoice_create_ss.js`)
+
+Creates one invoice per **standard** customer (Single Invoice = F) in saved
+search `customsearch_pret_rfc_customers`, from the most recent RFC record whose
+Invoice Reference (`custrecord_pret_rfc_invoice_reference`) is empty. Single-invoice customers are not handled yet.
+
+| Invoice field | Value |
+|---------------|-------|
+| Customer | `custrecord_pret_franchisee` |
+| Subsidiary | customer's subsidiary |
+| Date | `custrecord_pret_rfc_acc_period_ed` |
+| Order # | `<period> Franchise Royalty /Marketing Fees` |
+
+| Line | Item | Description label | Rate in description | Amount |
+|------|------|-------------------|---------------------|--------|
+| 1 | 1067 | Franchise Royalty Fees | `custrecord_pret_contract_rate_percent` | `custrecord_pret_franchise_amount` |
+| 2 | 11577 | Franchise Marketing Fees | `custrecord_pret_marketing_rate` | `custrecord_pret_marketing_amount` |
+| 3 | 1067 | Franchise Coffee Subscription Fees | `custrecord_pret_coffee_subs_rate` | `custrecord_pret_coffee_subs_amount` |
+| 4 | 11577 | Coffee Subscription Marketing Fee | `custrecord_pret_coffee_subscription_mr` | `custrecord_pret_coffee_subscription_ma` |
+
+Description format: `Franchise Royalty Fees P11 2026 - 4.5% 30/10/2026 - 26/11/2026`.
+Quantity 1, rate = amount, line Transaction Reference Date = period end date.
+Zero-amount lines are left off. After saving, the invoice number (tranid) is
+written to the RFC record's Invoice Reference, so re-runs never invoice twice
+(if that field is a List/Record field, the invoice internal id is written
+instead, which NetSuite displays as the invoice number).
+
+Deployment: script ID `customscript_pret_rfc_invoice_create`, no parameters.
+Schedule daily **after** the calculation script.

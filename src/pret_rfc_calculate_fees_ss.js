@@ -7,7 +7,7 @@
  * ----------------------------------------------------------------------------
  * Created 11/2026 by NS Nexus ltd on behalf of Pret a Manger(Europe)Limited.
  *
- * Version: 1.6
+ * Version: 1.7
  *
  * Version history:
  *   1.0  Initial version - one RFC record per franchisee.
@@ -29,6 +29,10 @@
  *        (custentity_pret_coffee_subscription_mr, all customers incl. single
  *        invoice) and Coffee Subscription Marketing Amount
  *        (coffee revenue x marketing rate % / 100) calculated on the RFC record.
+ *   1.7  Customer Update Date (custentity_pret_rfc_update_date) set to the run
+ *        date right after the customer's RFC record(s) are created (all
+ *        customers; for single-invoice customers in the same update as the
+ *        summed revenue).
  * ----------------------------------------------------------------------------
  * Deployed daily, but only does work when the run date (London time) is the
  * day after the end of an accounting period, e.g. period 30/10/2026 -
@@ -109,7 +113,8 @@ define(['N/search', 'N/record', 'N/runtime', 'N/task', 'N/log', 'N/format'],
             COFFEE_REVENUE: 'custentity_pret_coffee_sub_revenue',
             COFFEE_RATE: 'custentity_pret_coffee_subscription_rate',
             COFFEE_MKT_RATE: 'custentity_pret_coffee_subscription_mr',
-            SINGLE_INVOICE: 'custentity_pret_single_invoice'
+            SINGLE_INVOICE: 'custentity_pret_single_invoice',
+            UPDATE_DATE: 'custentity_pret_rfc_update_date'
         };
 
         // Custom fields on the customer address form
@@ -209,6 +214,8 @@ define(['N/search', 'N/record', 'N/runtime', 'N/task', 'N/log', 'N/format'],
                             shopId: null
                         });
                         stats.created++;
+                        updateCustomer(cust.id, { [CUST.UPDATE_DATE]: formatDate(runDate) });
+                        stats.customersUpdated++;
                     }
                 } catch (e) {
                     stats.errors++;
@@ -263,29 +270,41 @@ define(['N/search', 'N/record', 'N/runtime', 'N/task', 'N/log', 'N/format'],
                 }
             }
 
-            // Write the summed revenue and coffee subscription revenue back to
-            // the customer (one submitFields call, only the values that changed).
-            const values = {};
+            // Write the Update Date, plus the summed revenue and coffee
+            // subscription revenue where they changed, back to the customer
+            // (one submitFields call).
+            const values = { [CUST.UPDATE_DATE]: formatDate(runDate) };
             if (total !== cust.revenue) {
                 values[CUST.REVENUE] = total;
             }
             if (coffeeTotal !== cust.coffeeRevenue) {
                 values[CUST.COFFEE_REVENUE] = coffeeTotal;
             }
-            if (Object.keys(values).length) {
-                record.submitFields({
-                    type: record.Type.CUSTOMER,
-                    id: cust.id,
-                    values: values,
-                    options: { enableSourcing: false, ignoreMandatoryFields: true }
-                });
-                stats.customersUpdated++;
-                log.debug('RFC customer revenue updated', 'customer=' + cust.id +
-                    ' revenue ' + cust.revenue + ' -> ' + total +
-                    ', coffee ' + cust.coffeeRevenue + ' -> ' + coffeeTotal);
-            }
+            updateCustomer(cust.id, values);
+            stats.customersUpdated++;
+            log.debug('RFC customer revenue', 'customer=' + cust.id +
+                ' revenue ' + cust.revenue + ' -> ' + total +
+                ', coffee ' + cust.coffeeRevenue + ' -> ' + coffeeTotal);
             return true;
         };
+
+        /**
+         * Update fields on the customer record.
+         * @param {string} customerId
+         * @param {Object} values field id -> value
+         */
+        const updateCustomer = (customerId, values) => {
+            record.submitFields({
+                type: record.Type.CUSTOMER,
+                id: customerId,
+                values: values,
+                options: { enableSourcing: false, ignoreMandatoryFields: true }
+            });
+            log.audit('RFC customer updated', 'customer=' + customerId + ' ' + JSON.stringify(values));
+        };
+
+        /** Date -> string in the user's date format (for submitFields). */
+        const formatDate = (d) => format.format({ value: d, type: format.Type.DATE });
 
         /**
          * Shop ID, monthly revenue, rates and coffee subscription revenue / rate
